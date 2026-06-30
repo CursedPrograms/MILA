@@ -1,8 +1,10 @@
 #include <Servo.h>
+#include <IRremote.hpp>
 
 // === PINS ===
 const int trigPin = 2;
 const int echoPin = 3;
+const int irPin = A3;
 
 // Motor R
 const int IN1 = 4;
@@ -51,6 +53,7 @@ long lastRight = 0;
 // =====================
 void setup() {
   Serial.begin(115200);
+  delay(500);
 
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
@@ -63,6 +66,8 @@ void setup() {
   pinMode(ledB, OUTPUT);
 
   myServo.attach(11);
+  
+  IrReceiver.begin(irPin, ENABLE_LED_FEEDBACK);
 
   // Servo sweep test
   myServo.write(30);  delay(500);
@@ -79,7 +84,6 @@ void setup() {
   setColor(0, 0, 0);
   delay(200);
 
-  // Tell ESP we booted into obstacle mode
   Serial.println("DIST:0");
   Serial.println("LEFT:0");
   Serial.println("RIGHT:0");
@@ -88,6 +92,7 @@ void setup() {
 
 // =====================
 void loop() {
+  checkIR();
   checkSerial();
 
   if (manualMode) {
@@ -129,7 +134,6 @@ void loop() {
     myServo.write(90);
     delay(300);
 
-    // Turn toward side with MORE space
     robotState = TURNING;
     updateLighting();
 
@@ -151,6 +155,15 @@ void loop() {
 }
 
 // =====================
+void checkIR() {
+  if (IrReceiver.decode()) {
+    Serial.print("IR:0x");
+    Serial.println(IrReceiver.decodedIRData.command, HEX);
+    IrReceiver.resume();
+  }
+}
+
+// =====================
 void checkSerial() {
   if (!Serial.available()) return;
 
@@ -168,7 +181,7 @@ void checkSerial() {
     robotState = STOPPED;
 
   } else if (!manualMode) {
-    return; // ignore drive commands in obstacle mode
+    return;
 
   } else if (cmd == "FORWARD") {
     forward();
@@ -215,10 +228,10 @@ void updateLighting() {
   unsigned long now = millis();
 
   if (robotState == MOVING_FORWARD) {
-    setColor(0, 0, 255);                  // Solid blue
+    setColor(0, 0, 255);
 
   } else if (robotState == TURNING) {
-    if (now - lastStrobeTime >= 100) {    // White strobe ~10Hz
+    if (now - lastStrobeTime >= 100) {
       strobeState = !strobeState;
       lastStrobeTime = now;
       if (strobeState) setColor(255, 255, 255);
@@ -226,7 +239,7 @@ void updateLighting() {
     }
 
   } else {
-    setColor(255, 0, 0);                  // Solid red
+    setColor(255, 0, 0);
   }
 }
 
@@ -286,7 +299,6 @@ void turnRight() {
   if (!manualMode) delay(turnTime);
 }
 
-// Individual motor control for dual mode
 void leftMotorFwd() {
   digitalWrite(ENB, HIGH);
   digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
