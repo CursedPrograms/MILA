@@ -43,6 +43,8 @@ MILA
 - Ultrasonic Sensor
 - 5v DC Motors
 - RGB LED
+- Temprature & Humidity Sensor
+- IR Reciever
 
 <br>
 <div align="center">© Cursed Entertainment 2026</div>
