@@ -1,51 +1,101 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
 
 // === WIFI ===
-const char* ssid     = "MILA";
-const char* password = "12345678";
+// On boot, try to join NORA's network as a station (so MILA and NORA can
+// share a LAN and MILA can register itself with NORA's fleet registry).
+// If NORA isn't reachable within the timeout, fall back to hosting our
+// own access point exactly like before.
+const char* nora_ssid     = "NORA";
+const char* nora_password = "12345678";
+const char* mila_ssid     = "MILA";
+const char* mila_password = "12345678";
+const unsigned long WIFI_JOIN_TIMEOUT_MS = 8000;
+
+const IPAddress fleetHost(192, 168, 4, 1);   // NORA's fixed AP gateway address
+const unsigned long FLEET_HEARTBEAT_MS = 15000;   // NORA drops entries after 20s of silence
+bool fleetMode = false;   // true = joined NORA's network; false = running our own AP
 
 // === WEB SERVER ===
-ESP8266WebServer server(80);
+ESP8266WebServer server(5010);
 
 // === STATE ===
-String currentMode = "obstacle";
+String currentMode = "wasd";
 String lastCommand = "STOP";
 float  lastDist    = 0;
 String lastLeft    = "---";
 String lastRight   = "---";
 String lastTurn    = "";
+String lastIR      = "---";
+float  lastTemp    = 0;
+float  lastHumidity = 0;
+int    lastSpeed   = 100;
 
 // =====================
 void setup() {
   Serial.begin(115200);
   delay(100);
 
-  // Force AP config before starting
-  IPAddress local_ip(192, 168, 4, 1);
-  IPAddress gateway(192, 168, 4, 1);
-  IPAddress subnet(255, 255, 255, 0);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(nora_ssid, nora_password);
 
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(local_ip, gateway, subnet);
-  WiFi.softAP(ssid, password);
-  delay(1000);
+  unsigned long attemptStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - attemptStart < WIFI_JOIN_TIMEOUT_MS) {
+    delay(250);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    fleetMode = true;
+  } else {
+    WiFi.disconnect();
+    IPAddress local_ip(192, 168, 4, 1);
+    IPAddress gateway(192, 168, 4, 1);
+    IPAddress subnet(255, 255, 255, 0);
+
+    WiFi.mode(WIFI_AP);
+    WiFi.softAPConfig(local_ip, gateway, subnet);
+    WiFi.softAP(mila_ssid, mila_password);
+    delay(500);
+    fleetMode = false;
+  }
 
   // Routes
   server.on("/",       handleRoot);
   server.on("/cmd",    handleCmd);
   server.on("/mode",   handleMode);
   server.on("/status", handleStatus);
+  server.on("/fleet",  handleFleet);
 
   server.begin();
 
-  // Boot into obstacle mode
-  Serial.println("OBSTACLE");
+  if (fleetMode) fleetRegister();
+
+  if (MDNS.begin("mila")) {
+    MDNS.addService("http", "tcp", 5010);
+  }
+
+  ArduinoOTA.setHostname("mila");
+  ArduinoOTA.begin();
+
+  // Boot into WASD mode
+  Serial.println("WASD");
 }
 
 // =====================
 void loop() {
   server.handleClient();
+  ArduinoOTA.handle();
+  MDNS.update();
+
+  if (fleetMode) {
+    static unsigned long lastHeartbeat = 0;
+    if (millis() - lastHeartbeat >= FLEET_HEARTBEAT_MS) {
+      lastHeartbeat = millis();
+      fleetRegister();
+    }
+  }
 
   // Read sensor data from Arduino
   while (Serial.available()) {
@@ -55,11 +105,86 @@ void loop() {
     if (line.startsWith("LEFT:"))  lastLeft  = line.substring(5);
     if (line.startsWith("RIGHT:")) lastRight = line.substring(6);
     if (line.startsWith("TURN:"))  lastTurn  = line.substring(5);
+    if (line.startsWith("IR:"))    lastIR    = line.substring(3);
+    if (line.startsWith("TEMP:"))  lastTemp     = line.substring(5).toFloat();
+    if (line.startsWith("HUM:"))   lastHumidity = line.substring(4).toFloat();
+    if (line.startsWith("SPEED:")) lastSpeed    = line.substring(6).toInt();
   }
 }
 
 // =====================
+// Registers/heartbeats with NORA's fleet registry (see NORA's esp32.ino,
+// port 5000: POST /register with name/type/capabilities). Best-effort —
+// if NORA's registry doesn't respond we just move on and try again next
+// heartbeat interval.
+void fleetRegister() {
+  WiFiClient client;
+  if (!client.connect(fleetHost, 5000)) return;
+
+  String body = "name=MILA&type=tank&capabilities=wasd,tank,obstacle_avoidance";
+  client.print(String("POST /register HTTP/1.1\r\n") +
+               "Host: " + fleetHost.toString() + "\r\n" +
+               "Content-Type: application/x-www-form-urlencoded\r\n" +
+               "Content-Length: " + body.length() + "\r\n" +
+               "Connection: close\r\n\r\n" +
+               body);
+  client.stop();
+}
+
+// =====================
+String currentIP() {
+  return fleetMode ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+}
+
+// =====================
+// Proxies NORA's fleet roster (GET /robots on port 5000) so MILA's own
+// dashboard can show her and any siblings without the browser needing to
+// reach NORA directly.
+void handleFleet() {
+  if (!fleetMode) {
+    server.send(200, "application/json", "{\"authority\":\"none\",\"robots\":[]}");
+    return;
+  }
+
+  WiFiClient client;
+  if (!client.connect(fleetHost, 5000)) {
+    server.send(200, "application/json", "{\"authority\":\"unreachable\",\"robots\":[]}");
+    return;
+  }
+
+  client.print(String("GET /robots HTTP/1.1\r\n") +
+               "Host: " + fleetHost.toString() + "\r\n" +
+               "Connection: close\r\n\r\n");
+
+  unsigned long start = millis();
+  while (client.connected() && !client.available() && millis() - start < 2000) {
+    delay(10);
+  }
+
+  String resp;
+  bool inBody = false;
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    if (!inBody) {
+      if (line == "\r") inBody = true;   // blank line marks end of HTTP headers
+    } else {
+      resp += line;
+    }
+  }
+  client.stop();
+
+  if (resp.length() == 0) resp = "{\"authority\":\"unreachable\",\"robots\":[]}";
+  server.send(200, "application/json", resp);
+}
+
+// =====================
 void handleCmd() {
+  // Speed cycling works regardless of drive mode.
+  if (server.hasArg("v") && server.arg("v") == "SPEEDCYCLE") {
+    Serial.println("SPEEDCYCLE");
+    server.send(200, "text/plain", "OK");
+    return;
+  }
   if (currentMode == "obstacle") {
     server.send(200, "text/plain", "IGNORED");
     return;
@@ -76,7 +201,9 @@ void handleCmd() {
 void handleMode() {
   if (server.hasArg("v")) {
     currentMode = server.arg("v");
-    Serial.println(currentMode == "obstacle" ? "OBSTACLE" : "MANUAL");
+    if      (currentMode == "obstacle") Serial.println("OBSTACLE");
+    else if (currentMode == "tank")     Serial.println("TANK");
+    else                                Serial.println("WASD");
     server.send(200, "text/plain", "OK");
   } else {
     server.send(400, "text/plain", "ERR");
@@ -90,7 +217,13 @@ void handleStatus() {
   json += "\"dist\":"    + String(lastDist)   + ",";
   json += "\"left\":\""  + lastLeft           + "\",";
   json += "\"right\":\"" + lastRight          + "\",";
-  json += "\"turn\":\""  + lastTurn           + "\"";
+  json += "\"turn\":\""  + lastTurn           + "\",";
+  json += "\"ir\":\""    + lastIR             + "\",";
+  json += "\"temp\":"    + String(lastTemp, 1)     + ",";
+  json += "\"hum\":"     + String(lastHumidity, 1) + ",";
+  json += "\"ip\":\""    + currentIP()             + "\",";
+  json += "\"fleet\":"   + String(fleetMode ? 1 : 0) + ",";
+  json += "\"speed\":"   + String(lastSpeed);
   json += "}";
   server.send(200, "application/json", json);
 }
@@ -295,7 +428,7 @@ void handleRoot() {
 <div class="statusbar">
   <div class="stat">
     <div class="stat-label">MODE</div>
-    <div class="stat-value" id="s-mode">OBSTACLE</div>
+    <div class="stat-value" id="s-mode">WASD</div>
   </div>
   <div class="stat">
     <div class="stat-label">FRONT CM</div>
@@ -313,17 +446,33 @@ void handleRoot() {
     <div class="stat-label">LAST CMD</div>
     <div class="stat-value" id="s-cmd">---</div>
   </div>
+  <div class="stat">
+    <div class="stat-label">LAST IR</div>
+    <div class="stat-value" id="s-ir">---</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">TEMP</div>
+    <div class="stat-value" id="s-temp">---</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">HUMIDITY</div>
+    <div class="stat-value" id="s-hum">---</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">SPEED</div>
+    <div class="stat-value" id="s-speed">100%</div>
+  </div>
 </div>
 
 <main>
   <div class="mode-row">
-    <button class="mode-btn active" id="btn-obstacle" onclick="setMode('obstacle')">⚡ OBSTACLE</button>
-    <button class="mode-btn"        id="btn-wasd"     onclick="setMode('wasd')">🎮 WASD</button>
-    <button class="mode-btn"        id="btn-dual"     onclick="setMode('dual')">🕹 DUAL MOTOR</button>
+    <button class="mode-btn active" id="btn-wasd"     onclick="setMode('wasd')">🎮 WASD</button>
+    <button class="mode-btn"        id="btn-tank"     onclick="setMode('tank')">🕹 TANK</button>
+    <button class="mode-btn"        id="btn-obstacle" onclick="setMode('obstacle')">⚡ OBSTACLE</button>
   </div>
 
   <!-- OBSTACLE -->
-  <div class="panel active" id="panel-obstacle">
+  <div class="panel" id="panel-obstacle">
     <div class="panel-title">◈ AUTONOMOUS OBSTACLE AVOIDANCE</div>
     <div class="obs-wrap">
       <div class="scan-arc">
@@ -363,7 +512,7 @@ void handleRoot() {
   </div>
 
   <!-- WASD -->
-  <div class="panel" id="panel-wasd">
+  <div class="panel active" id="panel-wasd">
     <div class="panel-title">◈ WASD — KEYBOARD / TOUCH</div>
     <div class="dpad">
       <div class="dpad-btn empty"></div>
@@ -378,9 +527,9 @@ void handleRoot() {
     </div>
   </div>
 
-  <!-- DUAL -->
-  <div class="panel" id="panel-dual">
-    <div class="panel-title">◈ DUAL — INDEPENDENT MOTOR CONTROL</div>
+  <!-- TANK -->
+  <div class="panel" id="panel-tank">
+    <div class="panel-title">◈ TANK — INDEPENDENT TRACK CONTROL (Q/A left, E/D right)</div>
     <div class="dual">
       <div class="stick-group">
         <div class="stick-label">◈ LEFT MOTOR</div>
@@ -398,12 +547,21 @@ void handleRoot() {
       </div>
     </div>
   </div>
+
+  <!-- FLEET -->
+  <div class="panel" id="panel-fleet-wrap" style="display:block; padding:0;">
+    <div id="fleetPanel" style="display:none;" class="panel active">
+      <div class="panel-title">◈ FLEET</div>
+      <div id="fleetAuthority" style="font-size:0.8rem; color:var(--accent); margin-bottom:8px;">---</div>
+      <div id="fleetList" style="font-size:0.75rem; color:var(--sub);"></div>
+    </div>
+  </div>
 </main>
 
-<footer>MILA v1.0 &nbsp;|&nbsp; 192.168.4.1 &nbsp;|&nbsp; <span id="uptime">--:--</span></footer>
+<footer>MILA v1.0 &nbsp;|&nbsp; <span id="ipAddr">192.168.4.1</span>:5010 &nbsp;|&nbsp; <span id="uptime">--:--</span></footer>
 
 <script>
-  let mode = 'obstacle';
+  let mode = 'wasd';
   let scanAngle = 90, scanDir = 1;
   let startTime = Date.now();
   let connected = true;
@@ -430,7 +588,7 @@ void handleRoot() {
   function setMode(m) {
     mode = m;
     fetch('/mode?v=' + m);
-    ['obstacle','wasd','dual'].forEach(x => {
+    ['wasd','tank','obstacle'].forEach(x => {
       document.getElementById('btn-'   + x).classList.toggle('active', x === m);
       document.getElementById('panel-' + x).classList.toggle('active', x === m);
     });
@@ -455,20 +613,46 @@ void handleRoot() {
     document.getElementById('s-cmd').textContent = cmd;
   }
 
-  // Keyboard
-  const keyMap = { w:'FORWARD', s:'BACKWARD', a:'LEFT', d:'RIGHT' };
+  // Keyboard — WASD mode drives like a d-pad, TANK mode drives each track
+  // independently (Q/A = left track fwd/back, E/D = right track fwd/back).
+  const wasdKeyMap = { w:'FORWARD', s:'BACKWARD', a:'LEFT', d:'RIGHT' };
+  const tankKeyMap = { q:'L_FWD', a:'L_BWD', e:'R_FWD', d:'R_BWD' };
   const held = {};
   document.addEventListener('keydown', e => {
     if (held[e.key] || mode === 'obstacle') return;
     held[e.key] = true;
-    const cmd = keyMap[e.key.toLowerCase()];
+    const k = e.key.toLowerCase();
+    const cmd = mode === 'tank' ? tankKeyMap[k] : wasdKeyMap[k];
     if (cmd) sendCmd(cmd);
   });
   document.addEventListener('keyup', e => {
     held[e.key] = false;
-    const cmd = keyMap[e.key.toLowerCase()];
+    const k = e.key.toLowerCase();
+    const cmd = mode === 'tank' ? tankKeyMap[k] : wasdKeyMap[k];
     if (cmd) sendCmd('STOP');
   });
+
+  // X cycles speed presets (100/75/50/25), same button the IR remote's
+  // OK key now triggers — mirrors it here for keyboard/touch parity.
+  document.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() === 'x') fetch('/cmd?v=SPEEDCYCLE').catch(() => {});
+  });
+
+  // Fleet roster — only relevant once MILA has joined NORA's network.
+  function pollFleet() {
+    fetch('/fleet').then(r => r.json()).then(f => {
+      const panel = document.getElementById('fleetPanel');
+      if (f.authority === 'none') { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+      document.getElementById('fleetAuthority').textContent = 'authority: ' + f.authority;
+      const others = (f.robots || []).filter(r => r.name !== 'MILA');
+      document.getElementById('fleetList').innerHTML = others.length
+        ? others.map(r => `&bull; ${r.name} (${r.type}) &mdash; ${r.ip}`).join('<br>')
+        : '(no other robots registered)';
+    }).catch(() => {});
+  }
+  setInterval(pollFleet, 3000);
+  pollFleet();
 
   // Status polling
   function poll() {
@@ -483,6 +667,11 @@ void handleRoot() {
         document.getElementById('s-left').textContent  = d.left + ' cm';
         document.getElementById('s-right').textContent = d.right + ' cm';
         document.getElementById('s-cmd').textContent   = d.cmd;
+        document.getElementById('s-ir').textContent    = d.ir;
+        document.getElementById('s-temp').textContent  = d.temp + ' C';
+        document.getElementById('s-hum').textContent   = d.hum + ' %';
+        document.getElementById('ipAddr').textContent  = d.ip;
+        document.getElementById('s-speed').textContent = d.speed + '%';
 
         document.getElementById('obs-front').textContent = d.dist + ' cm';
         document.getElementById('obs-left').textContent  = d.left + ' cm';
