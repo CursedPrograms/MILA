@@ -32,6 +32,7 @@ String lastIR      = "---";
 float  lastTemp    = 0;
 float  lastHumidity = 0;
 int    lastSpeed   = 100;
+bool   lastGuard   = false;   // true while the manual-mode collision guard has force-stopped the robot
 
 // === CONNECTION WATCHDOG ===
 // Both clients (web dashboard and mila_controller.py) poll /status every
@@ -127,6 +128,7 @@ void loop() {
     if (line.startsWith("TEMP:"))  lastTemp     = line.substring(5).toFloat();
     if (line.startsWith("HUM:"))   lastHumidity = line.substring(4).toFloat();
     if (line.startsWith("SPEED:")) lastSpeed    = line.substring(6).toInt();
+    if (line.startsWith("GUARD:")) lastGuard    = line.substring(6).toInt() != 0;
   }
 }
 
@@ -197,11 +199,15 @@ void handleFleet() {
 
 // =====================
 void handleCmd() {
-  // Speed cycling works regardless of drive mode.
-  if (server.hasArg("v") && server.arg("v") == "SPEEDCYCLE") {
-    Serial.println("SPEEDCYCLE");
-    server.send(200, "text/plain", "OK");
-    return;
+  // Speed control works regardless of drive mode — both the preset cycle
+  // and the dashboard's direct slider value ("SPEED:75").
+  if (server.hasArg("v")) {
+    String v = server.arg("v");
+    if (v == "SPEEDCYCLE" || v.startsWith("SPEED:")) {
+      Serial.println(v);
+      server.send(200, "text/plain", "OK");
+      return;
+    }
   }
   if (currentMode == "obstacle") {
     server.send(200, "text/plain", "IGNORED");
@@ -243,7 +249,8 @@ void handleStatus() {
   json += "\"hum\":"     + String(lastHumidity, 1) + ",";
   json += "\"ip\":\""    + currentIP()             + "\",";
   json += "\"fleet\":"   + String(fleetMode ? 1 : 0) + ",";
-  json += "\"speed\":"   + String(lastSpeed);
+  json += "\"speed\":"   + String(lastSpeed) + ",";
+  json += "\"guard\":"   + String(lastGuard ? 1 : 0);
   json += "}";
   server.send(200, "application/json", json);
 }
@@ -432,6 +439,26 @@ void handleRoot() {
     font-size: 0.55rem; color: var(--sub);
     letter-spacing: 2px; padding: 16px; text-align: center;
   }
+
+  /* SPEED */
+  .speed-row { display: flex; align-items: center; gap: 12px; }
+  .speed-row span { font-size: 0.6rem; color: var(--sub); letter-spacing: 2px; }
+  .speed-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  #speedVal { color: var(--accent); font-size: 0.75rem; min-width: 34px; text-align: right; }
+
+  /* GUARD BANNER */
+  .guard-banner {
+    display: none;
+    width: 100%; max-width: 860px;
+    margin: 0 16px 4px;
+    background: #2a1010; border: 1px solid var(--red); color: var(--red);
+    text-align: center; padding: 8px; font-size: 0.65rem; letter-spacing: 2px;
+    border-radius: 8px;
+  }
+
+  /* TELEMETRY HISTORY */
+  #histChart { width: 100%; height: 110px; display: block; background: #0e0e1a; border-radius: 6px; }
+  .hist-legend { display: flex; gap: 14px; justify-content: center; font-size: 0.55rem; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -444,6 +471,8 @@ void handleRoot() {
   </div>
   <div class="conn-dot" id="connDot"></div>
 </header>
+
+<div class="guard-banner" id="guardBanner">⚠ COLLISION GUARD — OBSTACLE TOO CLOSE, STOPPED</div>
 
 <div class="statusbar">
   <div class="stat">
@@ -485,10 +514,26 @@ void handleRoot() {
 </div>
 
 <main>
+  <div class="panel active">
+    <div class="panel-title">◈ TELEMETRY — LAST ~24s</div>
+    <canvas id="histChart" width="820" height="110"></canvas>
+    <div class="hist-legend">
+      <span style="color:#00d4ff;">■ FRONT CM</span>
+      <span style="color:#ff8800;">■ TEMP C</span>
+      <span style="color:#7c3aed;">■ HUMIDITY %</span>
+    </div>
+  </div>
+
   <div class="mode-row">
     <button class="mode-btn active" id="btn-wasd"     onclick="setMode('wasd')">🎮 WASD</button>
     <button class="mode-btn"        id="btn-tank"     onclick="setMode('tank')">🕹 TANK</button>
     <button class="mode-btn"        id="btn-obstacle" onclick="setMode('obstacle')">⚡ OBSTACLE</button>
+  </div>
+
+  <div class="speed-row">
+    <span>SPEED</span>
+    <input type="range" id="speedSlider" min="25" max="100" step="25" value="100" oninput="setSpeed(this.value)">
+    <span id="speedVal">100%</span>
   </div>
 
   <!-- OBSTACLE -->
@@ -658,6 +703,44 @@ void handleRoot() {
     if (e.key.toLowerCase() === 'x') fetch('/cmd?v=SPEEDCYCLE').catch(() => {});
   });
 
+  // Speed slider — sends an explicit value rather than stepping presets.
+  function setSpeed(v) {
+    document.getElementById('speedVal').textContent = v + '%';
+    fetch('/cmd?v=SPEED:' + v).catch(() => {});
+  }
+
+  // Telemetry history — a rolling buffer of the last ~24s (60 samples at
+  // the 400ms poll interval), drawn as a plain canvas sparkline. Kept
+  // entirely client-side since /status already carries everything needed.
+  const HIST_LEN = 60;
+  const distHist = [], tempHist = [], humHist = [];
+  function pushHist(arr, val, max) {
+    arr.push(Math.max(0, Math.min(max, isNaN(val) ? 0 : val)));
+    if (arr.length > HIST_LEN) arr.shift();
+  }
+  function drawHistory() {
+    const canvas = document.getElementById('histChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    function line(arr, max, color) {
+      if (arr.length < 2) return;
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      arr.forEach((v, i) => {
+        const x = (i / (HIST_LEN - 1)) * w;
+        const y = h - (v / max) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    line(distHist, 100, '#00d4ff');
+    line(tempHist, 50,  '#ff8800');
+    line(humHist,  100, '#7c3aed');
+  }
+
   // Fleet roster — only relevant once MILA has joined NORA's network.
   function pollFleet() {
     fetch('/fleet').then(r => r.json()).then(f => {
@@ -692,6 +775,19 @@ void handleRoot() {
         document.getElementById('s-hum').textContent   = d.hum + ' %';
         document.getElementById('ipAddr').textContent  = d.ip;
         document.getElementById('s-speed').textContent = d.speed + '%';
+
+        document.getElementById('guardBanner').style.display = (d.guard == 1) ? 'block' : 'none';
+
+        const slider = document.getElementById('speedSlider');
+        if (document.activeElement !== slider) {
+          slider.value = d.speed;
+          document.getElementById('speedVal').textContent = d.speed + '%';
+        }
+
+        pushHist(distHist, parseFloat(d.dist), 100);
+        pushHist(tempHist, parseFloat(d.temp), 50);
+        pushHist(humHist,  parseFloat(d.hum),  100);
+        drawHistory();
 
         document.getElementById('obs-front').textContent = d.dist + ' cm';
         document.getElementById('obs-left').textContent  = d.left + ' cm';

@@ -156,6 +156,22 @@ def main():
         add((280, 100, 120, 40), "OBSTACLE", lambda: set_mode("obstacle")),
     ]
 
+    # Speed presets mirror the firmware's speedPresets[] (100/75/50/25).
+    # speed_state tracks the last-known value, kept in sync from telemetry
+    # each frame so it stays correct even if the IR remote or dashboard
+    # changed it out from under us.
+    speed_state = {"pct": 100}
+
+    def adjust_speed(delta):
+        new_pct = max(25, min(100, speed_state["pct"] + delta))
+        speed_state["pct"] = new_pct
+        link.cmd(f"SPEED:{new_pct}")
+
+    speed_btns = [
+        add((20, 150, 180, 40), "SPD -", lambda: adjust_speed(-25)),
+        add((220, 150, 180, 40), "SPD +", lambda: adjust_speed(25)),
+    ]
+
     # WASD d-pad
     pad_cx, pad_cy, bs, gap = W // 2, 280, 70, 8
     def start_drive(action):
@@ -179,10 +195,12 @@ def main():
 
     # TANK track buttons
     tank_y = 280
-    add((60, tank_y - 40, 90, 50), "Q\nL-FWD", lambda: start_drive("L_FWD"))
-    add((60, tank_y + 40, 90, 50), "A\nL-BWD", lambda: start_drive("L_BWD"))
-    add((W - 150, tank_y - 40, 90, 50), "E\nR-FWD", lambda: start_drive("R_FWD"))
-    add((W - 150, tank_y + 40, 90, 50), "D\nR-BWD", lambda: start_drive("R_BWD"))
+    tank_btns = [
+        add((60, tank_y - 40, 90, 50), "Q\nL-FWD", lambda: start_drive("L_FWD")),
+        add((60, tank_y + 40, 90, 50), "A\nL-BWD", lambda: start_drive("L_BWD")),
+        add((W - 150, tank_y - 40, 90, 50), "E\nR-FWD", lambda: start_drive("R_FWD")),
+        add((W - 150, tank_y + 40, 90, 50), "D\nR-BWD", lambda: start_drive("R_BWD")),
+    ]
 
     key_drive_wasd = {
         pygame.K_UP: "FORWARD", pygame.K_w: "FORWARD",
@@ -237,6 +255,11 @@ def main():
         # ---- draw ----
         screen.fill(BG)
         t = link.telemetry()
+        if "speed" in t:
+            try:
+                speed_state["pct"] = int(float(t["speed"]))
+            except (TypeError, ValueError):
+                pass
 
         title = f_big.render("MILA", True, ACCENT)
         screen.blit(title, title.get_rect(centerx=W // 2, y=14))
@@ -248,12 +271,15 @@ def main():
         for b in mode_btns:
             b.draw(screen)
 
+        for b in speed_btns:
+            b.draw(screen)
+
         if mode == "wasd":
             for b in wasd_btns.values():
                 b.draw(screen)
             stop_btn.draw(screen)
         elif mode == "tank":
-            for b in buttons[4:8]:
+            for b in tank_btns:
                 b.draw(screen)
 
         # status tiles
@@ -268,6 +294,9 @@ def main():
         stat_tile(screen, f_sml, f_med, 20, sy + 162, colw, "HUMIDITY %", t.get("hum", "--"))
         fleet_txt = "FLEET (joined NORA)" if t.get("fleet") == 1 else "STANDALONE AP"
         stat_tile(screen, f_sml, f_med, 30 + colw, sy + 162, colw, "IP  " + str(t.get("ip", "--")), fleet_txt)
+        guard_txt = "ACTIVE" if str(t.get("guard")) == "1" else "clear"
+        stat_tile(screen, f_sml, f_med, 20, sy + 216, colw, "SPEED %", t.get("speed", "--"))
+        stat_tile(screen, f_sml, f_med, 30 + colw, sy + 216, colw, "GUARD", guard_txt)
 
         hint = f_sml.render("1/2/3 mode  ·  arrows/WASD or QAED drive  ·  space stop  ·  esc quit", True, DIM)
         screen.blit(hint, hint.get_rect(centerx=W // 2, y=H - 24))

@@ -27,7 +27,9 @@ Servo myServo;
 
 // === TUNING ===
 int turnTime = 550; // ms — increase for wider turns
-int stopDist = 35;  // cm — how close before stopping
+int stopDist = 35;  // cm — how close before stopping (obstacle mode)
+int guardDist = 15; // cm — how close before force-stopping while driving forward in WASD/TANK
+const unsigned long GUARD_POLL_MS = 150; // how often to check the front sensor outside obstacle mode
 
 // === SPEED ===
 // Single-button speed control (X on the dashboard keyboard, OK on the IR
@@ -43,6 +45,18 @@ int pwmSpeed() { return (255 * speedPct) / 100; }
 void cycleSpeed() {
   speedIndex = (speedIndex + 1) % NUM_SPEED_PRESETS;
   speedPct   = speedPresets[speedIndex];
+  Serial.print("SPEED:"); Serial.println(speedPct);
+}
+
+// Sets speed directly (dashboard slider), rather than stepping through
+// the presets. Keeps speedIndex roughly in sync so a later IR/keyboard
+// cycle continues from somewhere sane instead of jumping back to 100.
+void setSpeedPct(int v) {
+  v = constrain(v, 0, 100);
+  speedPct = v;
+  for (int i = 0; i < NUM_SPEED_PRESETS; i++) {
+    if (speedPresets[i] == v) { speedIndex = i; break; }
+  }
   Serial.print("SPEED:"); Serial.println(speedPct);
 }
 
@@ -97,6 +111,16 @@ DriveMode driveMode = MODE_WASD;   // WASD is the boot default
 
 enum RobotState { MOVING_FORWARD, TURNING, STOPPED };
 RobotState robotState = STOPPED;
+
+// True while the most recent manual command was a forward-driving one
+// (WASD forward, or a tank track set forward) — used by checkManualGuard()
+// to know when the front sensor should be watched outside obstacle mode.
+// It only tracks the *last* command, not true per-track state, so a pivot
+// like L_FWD then R_BWD will drop the guard even though the left track is
+// still running forward — an accepted simplification given tank driving
+// already has no held-state tracking for the web/pygame command path.
+bool intentForward = false;
+bool guardActive   = false; // true once the guard has force-stopped the robot
 
 // === SENSOR CACHE (for ESP reporting) ===
 long lastDist  = 0;
@@ -155,6 +179,7 @@ void loop() {
   updateEnvSensor();
 
   if (driveMode != MODE_OBSTACLE) {
+    checkManualGuard();
     updateLighting();
     return;
   }
@@ -278,6 +303,7 @@ void checkIR() {
     stopMotors();
     robotState = STOPPED;
     irDriving  = false;
+    intentForward = false;
     updateLighting();
   }
 }
@@ -288,6 +314,43 @@ void resetManualState() {
   robotState = STOPPED;
   irDriving  = false;
   leftFwdOn = leftBwdOn = rightFwdOn = rightBwdOn = false;
+  intentForward = false;
+  clearGuard();
+}
+
+// Clears the collision-guard warning; called on every new manual drive
+// command so the dashboard's "GUARD ACTIVE" banner doesn't stick around
+// after the driver has already reacted to it.
+void clearGuard() {
+  if (guardActive) {
+    guardActive = false;
+    Serial.println("GUARD:0");
+  }
+}
+
+// Polls the front sensor while manually driving forward (WASD/TANK) and
+// force-stops if something gets within guardDist. Obstacle mode already
+// does its own sensing/scanning, so this only ever runs the rest of the
+// time, and only while intentForward is set (i.e. not while stopped or
+// turning), to avoid pinging the sensor when nothing is moving forward.
+void checkManualGuard() {
+  static unsigned long lastGuardPoll = 0;
+  if (!intentForward) return;
+  if (millis() - lastGuardPoll < GUARD_POLL_MS) return;
+  lastGuardPoll = millis();
+
+  lastDist = getDistance();
+  Serial.print("DIST:"); Serial.println(lastDist);
+
+  if (lastDist > 0 && lastDist < guardDist) {
+    stopMotors();
+    robotState = STOPPED;
+    intentForward = false;
+    if (!guardActive) {
+      guardActive = true;
+      Serial.println("GUARD:1");
+    }
+  }
 }
 
 // Applies the four tank-track toggle latches to the motor pins.
@@ -301,6 +364,8 @@ void applyTankMotors() {
   else                 rightMotorOff();
 
   robotState = (leftFwdOn || leftBwdOn || rightFwdOn || rightBwdOn) ? MOVING_FORWARD : STOPPED;
+  intentForward = (leftFwdOn || rightFwdOn);
+  clearGuard();
   updateLighting();
 }
 
@@ -327,19 +392,19 @@ void runIRCommand(uint8_t cmd) {
       break;
 
     case IR_FORWARD:
-      if (driveMode == MODE_WASD) { forward();   robotState = MOVING_FORWARD; irDriving = true; }
+      if (driveMode == MODE_WASD) { clearGuard(); intentForward = true;  forward();   robotState = MOVING_FORWARD; irDriving = true; }
       break;
 
     case IR_BACKWARD:
-      if (driveMode == MODE_WASD) { backward();  robotState = MOVING_FORWARD; irDriving = true; }
+      if (driveMode == MODE_WASD) { clearGuard(); intentForward = false; backward();  robotState = MOVING_FORWARD; irDriving = true; }
       break;
 
     case IR_LEFT:
-      if (driveMode == MODE_WASD) { turnLeft();  robotState = TURNING;        irDriving = true; }
+      if (driveMode == MODE_WASD) { clearGuard(); intentForward = false; turnLeft();  robotState = TURNING;        irDriving = true; }
       break;
 
     case IR_RIGHT:
-      if (driveMode == MODE_WASD) { turnRight(); robotState = TURNING;        irDriving = true; }
+      if (driveMode == MODE_WASD) { clearGuard(); intentForward = false; turnRight(); robotState = TURNING;        irDriving = true; }
       break;
 
     case IR_RED:
@@ -383,42 +448,63 @@ void checkSerial() {
   } else if (cmd == "SPEEDCYCLE") {
     cycleSpeed();
 
+  } else if (cmd.startsWith("SPEED:")) {
+    setSpeedPct(cmd.substring(6).toInt());
+
   } else if (driveMode == MODE_OBSTACLE) {
     return;
 
   } else if (cmd == "FORWARD") {
+    clearGuard();
+    intentForward = true;
     forward();
     robotState = MOVING_FORWARD;
 
   } else if (cmd == "BACKWARD") {
+    clearGuard();
+    intentForward = false;
     backward();
     robotState = MOVING_FORWARD;
 
   } else if (cmd == "LEFT") {
+    clearGuard();
+    intentForward = false;
     turnLeft();
     robotState = TURNING;
 
   } else if (cmd == "RIGHT") {
+    clearGuard();
+    intentForward = false;
     turnRight();
     robotState = TURNING;
 
   } else if (cmd == "STOP") {
+    clearGuard();
+    intentForward = false;
     stopMotors();
     robotState = STOPPED;
 
   } else if (cmd == "L_FWD") {
+    clearGuard();
+    intentForward = true;
     leftMotorFwd();
     robotState = MOVING_FORWARD;
 
   } else if (cmd == "L_BWD") {
+    clearGuard();
+    intentForward = false;
     leftMotorBwd();
     robotState = MOVING_FORWARD;
 
   } else if (cmd == "R_FWD") {
+    clearGuard();
+    intentForward = true;
     rightMotorFwd();
     robotState = MOVING_FORWARD;
 
   } else if (cmd == "R_BWD") {
+    clearGuard();
+    intentForward = false;
     rightMotorBwd();
     robotState = MOVING_FORWARD;
   }
