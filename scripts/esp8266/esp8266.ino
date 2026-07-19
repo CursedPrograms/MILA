@@ -33,6 +33,16 @@ float  lastTemp    = 0;
 float  lastHumidity = 0;
 int    lastSpeed   = 100;
 
+// === CONNECTION WATCHDOG ===
+// Both clients (web dashboard and mila_controller.py) poll /status every
+// 400ms for as long as they're running, whereas drive commands are only
+// sent once per button press/release — so a gap in /status polling, not a
+// gap in /cmd, is what actually tells us the client died or WiFi dropped.
+// Without this, losing the connection mid-drive leaves the motors running
+// forever since no STOP ever arrives.
+const unsigned long CONN_TIMEOUT_MS = 1500;
+unsigned long lastStatusPollMs = 0;
+
 // =====================
 void setup() {
   Serial.begin(115200);
@@ -95,6 +105,14 @@ void loop() {
       lastHeartbeat = millis();
       fleetRegister();
     }
+  }
+
+  // Connection watchdog: if a client was polling /status and stops
+  // (WiFi drop, closed app) while something is still driving, stop it.
+  if (lastStatusPollMs != 0 && currentMode != "obstacle" && lastCommand != "STOP" &&
+      millis() - lastStatusPollMs > CONN_TIMEOUT_MS) {
+    lastCommand = "STOP";
+    Serial.println("STOP");
   }
 
   // Read sensor data from Arduino
@@ -211,6 +229,8 @@ void handleMode() {
 }
 
 void handleStatus() {
+  lastStatusPollMs = millis();
+
   String json = "{";
   json += "\"mode\":\""  + currentMode       + "\",";
   json += "\"cmd\":\""   + lastCommand        + "\",";
