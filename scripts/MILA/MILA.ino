@@ -25,6 +25,9 @@ const int ledB = A2;
 // Servo on pin 11
 Servo myServo;
 
+// Buzzer
+const int buzzerPin = 8;
+
 // === TUNING ===
 int turnTime = 550; // ms — increase for wider turns
 int stopDist = 35;  // cm — how close before stopping (obstacle mode)
@@ -77,6 +80,8 @@ void setSpeedPct(int v) {
 #define IR_YELLOW 0x27   // tank: right track forward
 #define IR_BLUE   0x24   // tank: right track backward
 
+#define IR_MUTE   0x00   // TODO: fill in real hex code — toggles buzzer silent mode
+
 const unsigned long IR_HOLD_MS = 350; // no repeat frame within this long = WASD button released
 unsigned long lastIRMs  = 0;
 uint8_t       lastIRCmd = 0;
@@ -97,6 +102,21 @@ float lastHumidity = 0;
 // === LIGHTING ===
 unsigned long lastStrobeTime = 0;
 bool strobeState = false;
+
+// === BUZZER ===
+// Silent mode mutes everything except the startup tone, which always plays
+// so you get audible confirmation the board booted even if muted last time.
+bool buzzerSilent = false;
+
+void beep(unsigned int freq, unsigned int durMs) {
+  if (buzzerSilent) return;
+  tone(buzzerPin, freq, durMs);
+}
+
+void setBuzzerSilent(bool silent) {
+  buzzerSilent = silent;
+  Serial.print("BUZZER:"); Serial.println(buzzerSilent ? 0 : 1);
+}
 
 // === SEQUENCES ===
 const int cmySeq[3][3] = {
@@ -142,6 +162,8 @@ void setup() {
   pinMode(ledG, OUTPUT);
   pinMode(ledB, OUTPUT);
 
+  pinMode(buzzerPin, OUTPUT);
+
   myServo.attach(11);
 
   IrReceiver.begin(irPin, ENABLE_LED_FEEDBACK);
@@ -154,6 +176,9 @@ void setup() {
   myServo.write(30);  delay(500);
   myServo.write(150); delay(500);
   myServo.write(90);  delay(300);
+
+  // Startup tone always plays, even in silent mode, so booting is audible.
+  tone(buzzerPin, 2000, 200);
 
   stopMotors();
 
@@ -170,6 +195,7 @@ void setup() {
   Serial.println("RIGHT:0");
   Serial.println("TURN:");
   Serial.print("SPEED:"); Serial.println(speedPct);
+  Serial.print("BUZZER:"); Serial.println(buzzerSilent ? 0 : 1);
 }
 
 // =====================
@@ -200,6 +226,7 @@ void loop() {
     stopMotors();
     robotState = STOPPED;
     updateLighting();
+    beep(400, 150);
     delay(300);
 
     // Scan left
@@ -349,6 +376,7 @@ void checkManualGuard() {
     if (!guardActive) {
       guardActive = true;
       Serial.println("GUARD:1");
+      beep(400, 150);
     }
   }
 }
@@ -389,6 +417,10 @@ void runIRCommand(uint8_t cmd) {
 
     case IR_OK:
       cycleSpeed();
+      break;
+
+    case IR_MUTE:
+      setBuzzerSilent(!buzzerSilent);
       break;
 
     case IR_FORWARD:
@@ -450,6 +482,12 @@ void checkSerial() {
 
   } else if (cmd.startsWith("SPEED:")) {
     setSpeedPct(cmd.substring(6).toInt());
+
+  } else if (cmd == "MUTE") {
+    setBuzzerSilent(true);
+
+  } else if (cmd == "UNMUTE") {
+    setBuzzerSilent(false);
 
   } else if (driveMode == MODE_OBSTACLE) {
     return;
