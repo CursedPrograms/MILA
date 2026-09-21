@@ -29,6 +29,8 @@ String lastLeft    = "---";
 String lastRight   = "---";
 String lastTurn    = "";
 String lastIR      = "---";
+int    lastMotorL  = 0;       // actual track state from the Arduino: -1 back, 0 off, +1 forward
+int    lastMotorR  = 0;
 float  lastTemp    = 0;
 float  lastHumidity = 0;
 int    lastSpeed   = 100;
@@ -129,6 +131,13 @@ void loop() {
     if (line.startsWith("HUM:"))   lastHumidity = line.substring(4).toFloat();
     if (line.startsWith("SPEED:")) lastSpeed    = line.substring(6).toInt();
     if (line.startsWith("GUARD:")) lastGuard    = line.substring(6).toInt() != 0;
+    if (line.startsWith("MOTOR:")) {
+      int comma = line.indexOf(',');
+      if (comma > 6) {
+        lastMotorL = line.substring(6, comma).toInt();
+        lastMotorR = line.substring(comma + 1).toInt();
+      }
+    }
   }
 }
 
@@ -250,7 +259,9 @@ void handleStatus() {
   json += "\"ip\":\""    + currentIP()             + "\",";
   json += "\"fleet\":"   + String(fleetMode ? 1 : 0) + ",";
   json += "\"speed\":"   + String(lastSpeed) + ",";
-  json += "\"guard\":"   + String(lastGuard ? 1 : 0);
+  json += "\"guard\":"   + String(lastGuard ? 1 : 0) + ",";
+  json += "\"ml\":"      + String(lastMotorL) + ",";
+  json += "\"mr\":"      + String(lastMotorR);
   json += "}";
   server.send(200, "application/json", json);
 }

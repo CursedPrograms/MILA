@@ -58,6 +58,7 @@ namespace Mila
         public DateTime Time;
         public double Dist = double.NaN, Left = double.NaN, Right = double.NaN;
         public double Temp = double.NaN, Hum = double.NaN, Speed = double.NaN;
+        public double Guard = double.NaN, MotorL = double.NaN, MotorR = double.NaN;   // guard flag, actual track state (-1/0/+1)
         public string Mode = "", Cmd = "";
     }
 
@@ -243,6 +244,9 @@ namespace Mila
             s.Temp = Num(d, "temp");
             s.Hum = Num(d, "hum");
             s.Speed = Num(d, "speed");
+            s.Guard = Num(d, "guard");
+            s.MotorL = Num(d, "ml");
+            s.MotorR = Num(d, "mr");
             s.Mode = Str(d, "mode");
             s.Cmd = Str(d, "cmd");
             return s;
@@ -658,13 +662,14 @@ namespace Mila
                 Directory.CreateDirectory(dir);
                 string fname = "telemetry_" + DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".csv";
                 StringBuilder sb = new StringBuilder();
-                sb.Append("timestamp,dist_cm,left_cm,right_cm,temp_c,hum_pct,speed_pct,mode,last_cmd\n");
+                sb.Append("timestamp,dist_cm,left_cm,right_cm,temp_c,hum_pct,speed_pct,mode,last_cmd,guard,motor_l,motor_r\n");
                 foreach (Sample s in samples)
                 {
                     sb.Append(s.Time.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)).Append(',')
                       .Append(Csv(s.Dist)).Append(',').Append(Csv(s.Left)).Append(',').Append(Csv(s.Right)).Append(',')
                       .Append(Csv(s.Temp)).Append(',').Append(Csv(s.Hum)).Append(',').Append(Csv(s.Speed)).Append(',')
-                      .Append(s.Mode).Append(',').Append(s.Cmd).Append('\n');
+                      .Append(s.Mode).Append(',').Append(s.Cmd).Append(',')
+                      .Append(Csv(s.Guard)).Append(',').Append(Csv(s.MotorL)).Append(',').Append(Csv(s.MotorR)).Append('\n');
                 }
                 File.WriteAllText(System.IO.Path.Combine(dir, fname), sb.ToString());
                 exportMsg = "saved " + samples.Count + " rows: " + fname;

@@ -9,6 +9,10 @@
 //   (csc lives in %WINDIR%\Microsoft.NET\Framework64\v4.0.30319\)
 //
 // Then point a controller at it:  --host 127.0.0.1 --port 5010
+//
+// Extra test hook: GET /ir?v=0x74 presses an IR remote key (0x74 fwd, 0x75 back, 0x34 left, 0x33 right).
+// Like the real receiver it holds 350 ms and then stops, and it moves the motors without changing `cmd`,
+// which is how IR driving looks to the firmware. /status also reports the track state as ml / mr.
 // Binds to loopback only (no firewall prompt). Pass --any as a 2nd argument to
 // bind every interface, e.g. to test LAN auto-discovery (Windows will ask to allow it).
 
@@ -26,6 +30,9 @@ static class MockMila
     static readonly DateTime t0 = DateTime.Now;
     static string mode = "wasd", cmd = "STOP";
     static int speed = 100;
+    static string ir = "---";
+    static DateTime irUntil = DateTime.MinValue;
+    static int irL = 0, irR = 0;
 
     static void Main(string[] args)
     {
@@ -44,6 +51,43 @@ static class MockMila
 
     static string F(double v, string fmt) { return v.ToString(fmt, CultureInfo.InvariantCulture); }
 
+    // Track state (-1 back, 0 off, +1 forward) for a web command, matching the firmware's motor functions.
+    // (Tank commands drive one track and leave the other alone; the mock keeps only the last command.)
+    static void MotorsFor(string c, out int l, out int r)
+    {
+        l = 0; r = 0;
+        switch (c)
+        {
+            case "FORWARD": l = 1; r = 1; break;
+            case "BACKWARD": l = -1; r = -1; break;
+            case "LEFT": l = -1; r = 1; break;
+            case "RIGHT": l = 1; r = -1; break;
+            case "L_FWD": l = 1; break;
+            case "L_BWD": l = -1; break;
+            case "R_FWD": r = 1; break;
+            case "R_BWD": r = -1; break;
+        }
+    }
+
+    // Dev-only hook: press an IR remote key. Like the real receiver, a WASD key holds for 350 ms and then
+    // the robot stops. IR moves the motors directly, so `cmd` (web commands only) does not change.
+    static void PressIr(string code)
+    {
+        lock (lk)
+        {
+            ir = code;
+            int l = 0, r = 0;
+            switch (code.ToLowerInvariant())
+            {
+                case "0x74": l = 1; r = 1; break;     // forward
+                case "0x75": l = -1; r = -1; break;   // backward
+                case "0x34": l = -1; r = 1; break;    // left
+                case "0x33": l = 1; r = -1; break;    // right
+            }
+            if (l != 0 || r != 0) { irL = l; irR = r; irUntil = DateTime.Now.AddMilliseconds(350); }
+        }
+    }
+
     static string Status()
     {
         double t = (DateTime.Now - t0).TotalSeconds;
@@ -55,10 +99,14 @@ static class MockMila
         double hum = 45 + 8 * Math.Sin(t / 13);
         lock (lk)
         {
+            int ml, mr;
+            if (DateTime.Now < irUntil) { ml = irL; mr = irR; }   // an IR key is being held
+            else MotorsFor(cmd, out ml, out mr);
             return "{\"mode\":\"" + mode + "\",\"cmd\":\"" + cmd + "\",\"dist\":" + F(dist, "0.00") +
-                   ",\"left\":\"" + left + "\",\"right\":\"" + right + "\",\"turn\":\"---\",\"ir\":\"---\"" +
+                   ",\"left\":\"" + left + "\",\"right\":\"" + right + "\",\"turn\":\"---\",\"ir\":\"" + ir + "\"" +
                    ",\"temp\":" + F(temp, "0.0") + ",\"hum\":" + F(hum, "0.0") +
-                   ",\"ip\":\"mock\",\"fleet\":0,\"speed\":" + speed + ",\"guard\":0}";
+                   ",\"ip\":\"mock\",\"fleet\":0,\"speed\":" + speed + ",\"guard\":0" +
+                   ",\"ml\":" + ml + ",\"mr\":" + mr + "}";
         }
     }
 
@@ -94,6 +142,11 @@ static class MockMila
                         else if (v != "SPEEDCYCLE") cmd = v;
                     }
                     Console.WriteLine("{0:HH:mm:ss.fff}  CMD   {1}", DateTime.Now, v);
+                }
+                else if (path == "/ir")
+                {
+                    PressIr(v);
+                    Console.WriteLine("{0:HH:mm:ss.fff}  IR    {1}", DateTime.Now, v);
                 }
                 else if (path == "/mode")
                 {

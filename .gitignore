@@ -62,3 +62,4 @@ __pycache__/
 /scripts/**/bin/
 /scripts/**/obj/
 /scripts/fortran/*.exe
+/scripts/fortran/*.mod

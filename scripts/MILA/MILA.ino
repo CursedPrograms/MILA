@@ -355,21 +355,20 @@ void clearGuard() {
   }
 }
 
-// Polls the front sensor while manually driving forward (WASD/TANK) and
-// force-stops if something gets within guardDist. Obstacle mode already
-// does its own sensing/scanning, so this only ever runs the rest of the
-// time, and only while intentForward is set (i.e. not while stopped or
-// turning), to avoid pinging the sensor when nothing is moving forward.
+// Polls the front sensor while manually driving (WASD/TANK), so DIST stays
+// fresh even while stopped or turning (telemetry logs are used to train a
+// driving policy, and the human decides exactly then). It only force-stops
+// if something gets within guardDist while intentForward is set (i.e. not
+// while stopped or turning). Obstacle mode does its own sensing/scanning.
 void checkManualGuard() {
   static unsigned long lastGuardPoll = 0;
-  if (!intentForward) return;
   if (millis() - lastGuardPoll < GUARD_POLL_MS) return;
   lastGuardPoll = millis();
 
   lastDist = getDistance();
   Serial.print("DIST:"); Serial.println(lastDist);
 
-  if (lastDist > 0 && lastDist < guardDist) {
+  if (intentForward && lastDist > 0 && lastDist < guardDist) {
     stopMotors();
     robotState = STOPPED;
     intentForward = false;
@@ -594,25 +593,42 @@ long getDistance() {
 }
 
 // =====================
+// Actual motor state, reported over serial as "MOTOR:<left>,<right>" (each -1 back, 0 off, +1 forward)
+// whenever it changes. This is the one place that knows what the robot is really doing, whether the
+// order came from the IR remote, the ESP (dashboard / keyboard / gamepad) or obstacle avoidance, so
+// telemetry logs can be used to train a driving policy.
+int motorL = 0, motorR = 0;
+
+void reportMotors(int l, int r) {
+  if (l == motorL && r == motorR) return;
+  motorL = l;
+  motorR = r;
+  Serial.print("MOTOR:"); Serial.print(l); Serial.print(","); Serial.println(r);
+}
+
 void stopMotors() {
+  reportMotors(0, 0);
   digitalWrite(ENA, LOW); digitalWrite(ENB, LOW);
   digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
   digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
 }
 
 void forward() {
+  reportMotors(1, 1);
   analogWrite(ENA, pwmSpeed()); analogWrite(ENB, pwmSpeed());
   digitalWrite(IN1, LOW);  digitalWrite(IN2, HIGH);
   digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
 }
 
 void backward() {
+  reportMotors(-1, -1);
   analogWrite(ENA, pwmSpeed()); analogWrite(ENB, pwmSpeed());
   digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
   digitalWrite(IN3, LOW);  digitalWrite(IN4, HIGH);
 }
 
 void turnLeft() {
+  reportMotors(-1, 1);
   analogWrite(ENA, pwmSpeed()); analogWrite(ENB, pwmSpeed());
   digitalWrite(IN1, LOW);  digitalWrite(IN2, HIGH);
   digitalWrite(IN3, LOW);  digitalWrite(IN4, HIGH);
@@ -620,6 +636,7 @@ void turnLeft() {
 }
 
 void turnRight() {
+  reportMotors(1, -1);
   analogWrite(ENA, pwmSpeed()); analogWrite(ENB, pwmSpeed());
   digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
   digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
@@ -627,31 +644,37 @@ void turnRight() {
 }
 
 void leftMotorFwd() {
+  reportMotors(1, motorR);
   analogWrite(ENB, pwmSpeed());
   digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
 }
 
 void leftMotorBwd() {
+  reportMotors(-1, motorR);
   analogWrite(ENB, pwmSpeed());
   digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
 }
 
 void leftMotorOff() {
+  reportMotors(0, motorR);
   analogWrite(ENB, 0);
   digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
 }
 
 void rightMotorFwd() {
+  reportMotors(motorL, 1);
   analogWrite(ENA, pwmSpeed());
   digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
 }
 
 void rightMotorBwd() {
+  reportMotors(motorL, -1);
   analogWrite(ENA, pwmSpeed());
   digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
 }
 
 void rightMotorOff() {
+  reportMotors(motorL, 0);
   analogWrite(ENA, 0);
   digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
 }

@@ -140,6 +140,7 @@ static bool httpGet(HINTERNET session, const std::wstring& host, int port, const
 struct Sample {
     double t = 0;  // seconds since epoch
     double dist = NaN, left = NaN, right = NaN, temp = NaN, hum = NaN, speed = NaN;
+    double guard = NaN, ml = NaN, mr = NaN;  // collision-guard flag and actual left/right track state (-1/0/+1)
     std::string mode, cmd;
 };
 
@@ -217,6 +218,9 @@ private:
         s.temp = toNum(val("temp"));
         s.hum = toNum(val("hum"));
         s.speed = toNum(val("speed"));
+        s.guard = toNum(val("guard"));
+        s.ml = toNum(val("ml"));
+        s.mr = toNum(val("mr"));
         s.mode = val("mode");
         s.cmd = val("cmd");
         return s;
@@ -568,7 +572,7 @@ static void exportCsv() {
         g.exportMsg = "could not write file";
         return;
     }
-    fprintf(f, "timestamp,dist_cm,left_cm,right_cm,temp_c,hum_pct,speed_pct,mode,last_cmd\n");
+    fprintf(f, "timestamp,dist_cm,left_cm,right_cm,temp_c,hum_pct,speed_pct,mode,last_cmd,guard,motor_l,motor_r\n");
     auto num = [](double v) {
         char b[32];
         if (std::isnan(v)) return std::string();
@@ -579,9 +583,10 @@ static void exportCsv() {
         time_t secs = (time_t)s.t;
         char ts[32];
         strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", localtime(&secs));
-        fprintf(f, "%s.%03d,%s,%s,%s,%s,%s,%s,%s,%s\n", ts, (int)((s.t - std::floor(s.t)) * 1000), num(s.dist).c_str(),
+        fprintf(f, "%s.%03d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n", ts, (int)((s.t - std::floor(s.t)) * 1000), num(s.dist).c_str(),
                 num(s.left).c_str(), num(s.right).c_str(), num(s.temp).c_str(), num(s.hum).c_str(),
-                num(s.speed).c_str(), s.mode.c_str(), s.cmd.c_str());
+                num(s.speed).c_str(), s.mode.c_str(), s.cmd.c_str(), num(s.guard).c_str(), num(s.ml).c_str(),
+                num(s.mr).c_str());
     }
     fclose(f);
     g.exportMsg = "saved " + std::to_string(samples.size()) + " rows: " + fname;

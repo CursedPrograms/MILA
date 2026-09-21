@@ -105,6 +105,25 @@ scripts/run-fortran.sh              # or run-fortran.bat / run-fortran.ps1
 scripts/run-fortran.sh my_run.csv
 ```
 
+## Training data: teach MILA to drive herself
+
+Drive her around by hand (IR remote, keyboard, gamepad or the dashboard), press **EXPORT CSV**, and `scripts/fortran/make_dataset.f90` turns the sessions into a dataset for imitation learning: each row pairs what the ultrasonic sensor saw with what the human was doing.
+
+```
+scripts/run-dataset.sh      # every export -> Documents\MILA-telemetry\datasets\drive_policy.csv
+scripts/run-dataset.sh out.csv session1.csv session2.csv
+```
+
+- **Only human driving is kept** (`wasd` and `tank` modes). Obstacle mode (she drives herself) and moments the collision guard overrode you are dropped.
+- **The label is the real motor state.** The Arduino now reports `MOTOR:<left>,<right>` (each -1 / 0 / +1), so the label is the same whichever input you used. The IR remote moves the motors directly and never shows up as a web command, which is why this is needed. It maps to 9 classes: `STOP`, `FORWARD`, `BACKWARD`, `LEFT`, `RIGHT`, `L_FWD`, `L_BWD`, `R_FWD`, `R_BWD`.
+- **Features:** front distance, how it is changing (`d_dist`, 5-sample average and minimum), speed and mode. `dist_valid` is 0 when the sensor returned no echo, in which case `dist` is carried over from the last good reading.
+- **No data leakage:** every export is its own session, and the last 20 % of each is marked `split=val`.
+- Left/right distances are **not** features: the firmware only measures them during the obstacle-mode scan, so in human-driven data they are stale.
+
+Columns: `session,t_s,split,mode,mode_id,dist,dist_valid,d_dist,dist_avg5,dist_min5,speed,motor_l,motor_r,action,action_id,next_action,next_action_id`. `action` is what you were doing at that sample and `next_action` what you did one sample (about 0.4 s) later, so use whichever suits your model. Load it with pandas, or anything that reads CSV.
+
+**Reflash both boards** (`scripts/MILA` and `scripts/esp8266`) to get the motor columns. Exports from older firmware still work, but their labels come from the last web command only, so IR driving is invisible in them. The same reflash also makes the front sensor sample continuously in manual modes, so the distance no longer goes stale while you are stopped or turning.
+
 ## Testing without a robot
 
 `scripts/sim` holds a mock MILA that serves the same endpoints as the firmware with simulated sensor data:

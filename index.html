@@ -321,6 +321,26 @@ Left dist cm      180       20     40.00    100.00     70.61     21.06          
 Close calls (front &lt; 20 cm): 8 samples (4.0%)
 Connection: 1 gap(s) longer than 2.0 s (longest 8.0 s)</pre>
 
+    <h3 class="title" style="margin-top:40px;font-size:22px">Teach MILA to drive herself</h3>
+    <p class="muted">Drive by hand (IR remote, keyboard, gamepad or the dashboard), press <strong>EXPORT CSV</strong>, and <code>scripts/fortran/make_dataset.f90</code> turns your sessions into an imitation-learning dataset: what the ultrasonic sensor saw, paired with what you were doing.</p>
+    <div class="grid cols-2">
+      <div class="card"><h4>Human driving only</h4><p>Obstacle mode (she drives herself) and moments the collision guard overrode you are dropped.</p></div>
+      <div class="card"><h4>Labels from the motors</h4><p>The Arduino reports the real left/right track state, so IR driving is captured too. Nine classes, from <code>STOP</code> to <code>R_BWD</code>.</p></div>
+      <div class="card"><h4>Sensible features</h4><p>Front distance, its change, a 5-sample average and minimum, speed and mode. No-echo readings are flagged and carried forward.</p></div>
+      <div class="card"><h4>No leakage</h4><p>Each export is one session, and the last 20&nbsp;% of every session is marked as validation.</p></div>
+    </div>
+<pre><span class="p">$</span> scripts/run-dataset.sh     <span class="c"># or run-dataset.bat / run-dataset.ps1</span>
+
+Rows kept: 252  (train 220, val 32)
+  dropped, robot was driving itself (obstacle mode): 25 rows
+  dropped, collision guard overrode the human:        3 rows
+
+Action distribution (kept rows):
+  0 STOP           31  (12.3%)
+  1 FORWARD       158  (62.7%)
+  3 LEFT           63  (25.0%)</pre>
+    <p class="muted">Reflash both boards to get the motor columns. Older exports still work, but IR driving is invisible in them.</p>
+
     <h3 class="title" style="margin-top:40px;font-size:22px">Test without a robot</h3>
     <p class="muted">A mock MILA lives in <code>scripts/sim</code>. It serves the same endpoints as the firmware with simulated sensor data:</p>
 <pre><span class="p">$</span> scripts/run-sim.sh

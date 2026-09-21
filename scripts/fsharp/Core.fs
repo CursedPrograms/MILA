@@ -15,7 +15,10 @@ type Sample =
       Hum: float
       Speed: float
       Mode: string
-      Cmd: string }
+      Cmd: string
+      Guard: float
+      MotorL: float
+      MotorR: float }
 
 module Json =
 
@@ -75,7 +78,10 @@ module Sample =
           Hum = Json.num m "hum"
           Speed = Json.num m "speed"
           Mode = Json.str m "mode"
-          Cmd = Json.str m "cmd" }
+          Cmd = Json.str m "cmd"
+          Guard = Json.num m "guard"
+          MotorL = Json.num m "ml"
+          MotorR = Json.num m "mr" }
 
 /// Remembered between runs in %APPDATA%\MILA\controller.ini (the same file the other controllers use).
 type Settings =
@@ -149,7 +155,10 @@ module Csv =
               cell s.Hum
               cell s.Speed
               s.Mode
-              s.Cmd ]
+              s.Cmd
+              cell s.Guard
+              cell s.MotorL
+              cell s.MotorR ]
         )
 
     /// Writes the whole session to Documents\MILA-telemetry and returns a short message for the UI.
@@ -163,7 +172,7 @@ module Csv =
                 Directory.CreateDirectory dir |> ignore
                 let fname =
                     "telemetry_" + DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".csv"
-                let header = "timestamp,dist_cm,left_cm,right_cm,temp_c,hum_pct,speed_pct,mode,last_cmd"
+                let header = "timestamp,dist_cm,left_cm,right_cm,temp_c,hum_pct,speed_pct,mode,last_cmd,guard,motor_l,motor_r"
                 File.WriteAllLines(Path.Combine(dir, fname), header :: List.map row samples)
                 sprintf "saved %d rows: %s" (List.length samples) fname
             with _ ->

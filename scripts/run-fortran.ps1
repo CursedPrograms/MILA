@@ -7,7 +7,7 @@ $file = $null
 if ($args.Count -gt 0) { $file = (Resolve-Path $args[0]).Path }
 Set-Location (Join-Path $PSScriptRoot "fortran")
 
-gfortran -O2 -Wall -Wextra -std=f2008 -static telemetry_stats.f90 -o telemetry_stats.exe
+gfortran -O2 -Wall -Wextra -std=f2008 -static telemetry_common.f90 telemetry_stats.f90 -o telemetry_stats.exe
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if (-not $file) {
     $latest = Get-ChildItem "$env:USERPROFILE\Documents\MILA-telemetry\*.csv" -ErrorAction SilentlyContinue |
