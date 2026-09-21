@@ -19,6 +19,15 @@
   <img alt="Shell" src="https://img.shields.io/badge/Shell-%23323330.svg?&style=for-the-badge&logo=gnu-bash&logoColor=white"/>
 </div>
 
+
+
+---
+
+# MILA
+## MINIATURE INTEGRATED LOGIC AUTOMATON
+
+- Robot Type: Tank
+
 ---
 
 ### Software
@@ -26,12 +35,9 @@
 
 ---
 
-# MILA
-## MINIATURE INTEGRATED LOGIC AUTOMATON
+## Overview
 
 **Website: <https://cursedprograms.github.io/MILA/>**
-
-## Overview
 
 MILA is a small tank-chassis robot you can drive over WiFi. It hosts its own web dashboard, streams live sensor data, and can steer itself around obstacles.
 
