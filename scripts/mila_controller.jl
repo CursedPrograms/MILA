@@ -234,7 +234,7 @@ function main(args = ARGS)
     tile!(c2, sy + 216, "GUARD", lift(t -> tv(t, "guard") == "1" ? "ACTIVE" : "clear", T))
 
     text!(ax, Point2f(W / 2, H - 18);
-          text = "1/2/3 mode  -  arrows/WASD or QAED drive  -  space stop  -  esc quit",
+          text = "1/2/3 mode - WASD/QAED drive - space stop - esc quit",
           fontsize = 11, color = DIM, align = (:center, :center))
 
     # Keep speed_pct in sync with telemetry so it stays correct even if the IR

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MILA — Miniature Integrated Logic Automaton</title>
+<meta name="description" content="MILA is a small WiFi-controlled tank robot built on an ESP8266 and Arduino, with a web dashboard and desktop controllers in seven languages.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="MILA — Miniature Integrated Logic Automaton">
+<meta property="og:description" content="A small WiFi-controlled tank robot with a web dashboard and desktop controllers.">
+<meta property="og:type" content="website">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #12121a;
+    --border: #1e1e2e;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --green: #00ff88;
+    --text: #e0e0f0;
+    --sub: #8a8ab0;
+    --mono: ui-monospace, "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  code, pre, .mono { font-family: var(--mono); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10, 10, 15, .85);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 16px; }
+  nav .brand { font: 700 18px var(--mono); letter-spacing: 3px; color: var(--accent); }
+  nav ul { display: flex; gap: 20px; list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  nav ul a { color: var(--sub); }
+  nav ul a:hover { color: var(--text); text-decoration: none; }
+  @media (max-width: 640px) { nav ul li:not(:last-child) { display: none; } }
+
+  /* hero */
+  header.hero { padding: 88px 0 64px; text-align: center; position: relative; overflow: hidden; }
+  header.hero::before {
+    content: ""; position: absolute; inset: -40% 0 auto 0; height: 520px; z-index: -1;
+    background: radial-gradient(ellipse at 50% 30%, rgba(0, 212, 255, .16), transparent 60%),
+                radial-gradient(ellipse at 75% 20%, rgba(124, 58, 237, .14), transparent 55%);
+  }
+  .eyebrow { font: 12px var(--mono); letter-spacing: 3px; color: var(--sub); text-transform: uppercase; }
+  h1 {
+    margin: 12px 0 8px;
+    font: 800 clamp(56px, 12vw, 108px)/1 var(--mono);
+    letter-spacing: .12em;
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(0, 212, 255, .35);
+  }
+  .tagline { font-size: clamp(15px, 2.6vw, 20px); color: var(--text); letter-spacing: .28em; text-transform: uppercase; margin: 0 0 28px; }
+  .lede { max-width: 640px; margin: 0 auto 32px; color: var(--sub); font-size: 17px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn {
+    display: inline-block; padding: 11px 22px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    font: 600 14px var(--mono); letter-spacing: .05em; transition: border-color .15s, background .15s;
+  }
+  .btn:hover { border-color: var(--accent); text-decoration: none; }
+  .btn.primary { background: rgba(0, 212, 255, .12); border-color: var(--accent); color: var(--accent); }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 36px; }
+  .tag { font: 12px var(--mono); color: var(--sub); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; }
+
+  /* sections */
+  section { padding: 56px 0; border-top: 1px solid var(--border); }
+  h2 { margin: 0 0 6px; font: 700 13px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--accent); }
+  h3.title { margin: 0 0 24px; font-size: clamp(24px, 4vw, 32px); line-height: 1.25; }
+  p { margin: 0 0 16px; }
+  .muted { color: var(--sub); }
+
+  .grid { display: grid; gap: 14px; }
+  .grid.cols-3 { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .grid.cols-2 { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .card h4 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--sub); font-size: 14.5px; }
+  .card .k { font: 11px var(--mono); letter-spacing: .15em; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; display: block; }
+
+  /* hardware list */
+  .parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .parts li {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; display: flex; align-items: baseline; gap: 12px;
+  }
+  .parts .n { font: 12px var(--mono); color: var(--accent); min-width: 22px; }
+
+  /* modes */
+  .mode { border-left: 3px solid var(--accent); }
+  .mode:nth-child(2) { border-left-color: var(--accent2); }
+  .mode:nth-child(3) { border-left-color: var(--green); }
+  kbd {
+    font: 12px var(--mono); background: var(--bg); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--text);
+  }
+
+  /* code */
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; overflow-x: auto; font-size: 13.5px; line-height: 1.6; margin: 0 0 16px;
+  }
+  pre .c { color: #5c5c80; }
+  pre .p { color: var(--accent); user-select: none; }
+  :not(pre) > code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: .9em; }
+
+  /* table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { font: 11px var(--mono); letter-spacing: .15em; text-transform: uppercase; color: var(--sub); background: var(--panel); }
+  tr:last-child td { border-bottom: 0; }
+  td.mono { color: var(--accent); font-size: 13px; }
+  .yes { color: var(--green); }
+  .no { color: #4a4a68; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--border); padding: 48px 0 56px; text-align: center; color: var(--sub); font-size: 14px; }
+  footer .logos { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 28px; margin: 24px 0; }
+  footer .logos img { display: block; height: auto; }
+  footer .links { display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: center; margin-bottom: 8px; }
+
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn { transition: none; } }
+</style>
+</head>
+<body>
+
+<nav aria-label="Primary">
+  <div class="wrap">
+    <a class="brand" href="#top">MILA</a>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#hardware">Hardware</a></li>
+      <li><a href="#modes">Modes</a></li>
+      <li><a href="#controllers">Controllers</a></li>
+      <li><a href="https://github.com/CursedPrograms/MILA">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="eyebrow">Cursed Entertainment</div>
+    <h1>MILA</h1>
+    <p class="tagline">Miniature Integrated Logic Automaton</p>
+    <p class="lede">A small tank-chassis robot you can drive over WiFi. It hosts its own web dashboard, streams live sensor data, and can steer itself around obstacles.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/CursedPrograms/MILA">View on GitHub</a>
+      <a class="btn" href="#quickstart">Quick start</a>
+      <a class="btn" href="https://ko-fi.com/cursedentertainment">Support on Ko-fi</a>
+    </div>
+    <div class="tags" aria-label="Technologies">
+      <span class="tag">C++</span>
+      <span class="tag">Arduino</span>
+      <span class="tag">ESP8266</span>
+      <span class="tag">Shell</span>
+      <span class="tag">MIT License</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section id="overview">
+  <div class="wrap">
+    <h2>Overview</h2>
+    <h3 class="title">A tiny robot with a lot going on</h3>
+    <div class="grid cols-3">
+      <div class="card">
+        <span class="k">Drive</span>
+        <h4>Three ways to steer</h4>
+        <p>Drive it like a car (WASD), control each track like a tank, or let it roam on its own in obstacle mode.</p>
+      </div>
+      <div class="card">
+        <span class="k">Sense</span>
+        <h4>Live telemetry</h4>
+        <p>An ultrasonic sensor on a servo reads front, left and right distances, alongside temperature, humidity and the last IR remote key.</p>
+      </div>
+      <div class="card">
+        <span class="k">Connect</span>
+        <h4>WiFi dashboard</h4>
+        <p>The ESP8266 serves a web dashboard on port <code>5010</code>. Join MILA's access point, or her fleet on NORA's network.</p>
+      </div>
+      <div class="card">
+        <span class="k">Stay safe</span>
+        <h4>Collision guard</h4>
+        <p>In manual modes the robot force-stops if it's about to hit something, and a watchdog stops it if your connection drops.</p>
+      </div>
+      <div class="card">
+        <span class="k">Speed</span>
+        <h4>Adjustable power</h4>
+        <p>Cycle 100 / 75 / 50 / 25&nbsp;% presets from the IR remote, or set an exact value with the dashboard slider.</p>
+      </div>
+      <div class="card">
+        <span class="k">Remote</span>
+        <h4>Desktop controllers</h4>
+        <p>Native controllers in seven languages, with radar, live graphs, gamepad support and one-click network discovery.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="hardware">
+  <div class="wrap">
+    <h2>Hardware</h2>
+    <h3 class="title">What it's built from</h3>
+    <ol class="parts">
+      <li><span class="n">01</span> Small tank robot chassis</li>
+      <li><span class="n">02</span> Arduino Bluetooth (integrated ESP8266)</li>
+      <li><span class="n">03</span> 2S 18650 battery pack</li>
+      <li><span class="n">04</span> L298N motor driver</li>
+      <li><span class="n">05</span> MG95 servo</li>
+      <li><span class="n">06</span> Ultrasonic sensor</li>
+      <li><span class="n">07</span> 5&nbsp;V DC motors</li>
+      <li><span class="n">08</span> RGB LED</li>
+      <li><span class="n">09</span> Temperature &amp; humidity sensor</li>
+      <li><span class="n">10</span> IR receiver</li>
+    </ol>
+  </div>
+</section>
+
+<section id="modes">
+  <div class="wrap">
+    <h2>Drive modes</h2>
+    <h3 class="title">Pick how MILA moves</h3>
+    <div class="grid cols-3">
+      <div class="card mode">
+        <span class="k">1 &middot; WASD</span>
+        <h4>Car-style driving</h4>
+        <p>Forward, back, left and right with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys. <kbd>Space</kbd> stops.</p>
+      </div>
+      <div class="card mode">
+        <span class="k">2 &middot; Tank</span>
+        <h4>Independent tracks</h4>
+        <p><kbd>Q</kbd>/<kbd>A</kbd> drive the left track forward and back, <kbd>E</kbd>/<kbd>D</kbd> the right. Great for precise turns.</p>
+      </div>
+      <div class="card mode">
+        <span class="k">3 &middot; Obstacle</span>
+        <h4>Autonomous</h4>
+        <p>MILA drives on her own, scanning with the servo-mounted sensor and turning away from whatever is in the way.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Quick start</h2>
+    <h3 class="title">Get driving in a few minutes</h3>
+    <p class="muted">Flash the firmware from <code>scripts/esp8266</code> and <code>scripts/MILA</code> using the <a href="https://docs.arduino.cc/software/ide/">Arduino IDE</a>, then power the robot on and join her WiFi network. MILA hosts her own access point at <code>192.168.4.1</code>.</p>
+    <p>Open the dashboard in any browser, or use a desktop controller:</p>
+<pre><span class="c"># Python controller: creates a venv, installs deps, launches it</span>
+<span class="p">$</span> ./run.sh                 <span class="c"># macOS / Linux / Git Bash</span>
+<span class="p">&gt;</span> run.bat                  <span class="c"># Windows (cmd)</span>
+<span class="p">&gt;</span> .\run.ps1                <span class="c"># Windows (PowerShell)</span>
+
+<span class="c"># Point at a specific robot, or let it find her for you</span>
+<span class="p">$</span> ./run.sh --host 192.168.4.1 --port 5010</pre>
+    <p class="muted">If MILA joined NORA's network (fleet mode), she won't be at <code>192.168.4.1</code>. Press <strong>SCAN NETWORK</strong> in the C++, C# or F# controller, or start it with <code>--host auto</code>.</p>
+  </div>
+</section>
+
+<section id="controllers">
+  <div class="wrap">
+    <h2>Desktop controllers</h2>
+    <h3 class="title">Same robot, your language</h3>
+    <p class="muted">Each controller lives in <a href="https://github.com/CursedPrograms/MILA/tree/main/scripts"><code>scripts/</code></a> and has a matching build-and-run script in <code>.sh</code>, <code>.bat</code> and <code>.ps1</code> form.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Language</th><th>UI toolkit</th><th>Run</th><th>Radar &amp; graphs</th><th>Gamepad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Python</td><td>pygame</td><td class="mono">run.sh</td><td class="no">&ndash;</td><td class="no">&ndash;</td></tr>
+          <tr><td>C++</td><td>Win32 / GDI</td><td class="mono">scripts/run-cpp.*</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>C#</td><td>WinForms</td><td class="mono">scripts/run-csharp.*</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>F# <span class="muted">(preview)</span></td><td>WinForms</td><td class="mono">scripts/run-fsharp.*</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>Rust</td><td>egui</td><td class="mono">scripts/run-rust.*</td><td class="no">&ndash;</td><td class="no">&ndash;</td></tr>
+          <tr><td>Go</td><td>Ebitengine</td><td class="mono">scripts/run-go.*</td><td class="no">&ndash;</td><td class="no">&ndash;</td></tr>
+          <tr><td>Julia</td><td>GLMakie</td><td class="mono">scripts/run-julia.*</td><td class="no">&ndash;</td><td class="no">&ndash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="title" style="margin-top:40px;font-size:22px">Highlights of the C++, C# and F# controllers</h3>
+    <div class="grid cols-2">
+      <div class="card"><h4>Proximity radar</h4><p>Left, front and right distances drawn as coloured wedges: green when clear, amber under 50&nbsp;cm, red under 20&nbsp;cm.</p></div>
+      <div class="card"><h4>Live graphs &amp; CSV export</h4><p>Distance, temperature and humidity plotted over the last minute, with a one-click CSV of the whole session.</p></div>
+      <div class="card"><h4>Gamepad support</h4><p>Xbox controllers via XInput: stick or D-pad to drive, triggers for speed, <kbd>A</kbd> to stop, bumpers to switch mode.</p></div>
+      <div class="card"><h4>Network discovery</h4><p>Scan your subnets for MILA and connect with a click. The last host, port and mode are remembered.</p></div>
+    </div>
+
+    <h3 class="title" style="margin-top:40px;font-size:22px">Test without a robot</h3>
+    <p class="muted">A mock MILA lives in <code>scripts/sim</code>. It serves the same endpoints as the firmware with simulated sensor data:</p>
+<pre><span class="p">$</span> scripts/run-sim.sh
+<span class="p">$</span> scripts/run-cpp.sh --host 127.0.0.1</pre>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/CursedPrograms/MILA">GitHub</a>
+      <a href="https://x.com/NorowaretaGemu">X: @NorowaretaGemu</a>
+      <a href="https://cursed-entertainment.itch.io/">itch.io</a>
+      <a href="https://ko-fi.com/cursedentertainment">Ko-fi</a>
+      <a href="https://github.com/CursedPrograms/MILA/blob/main/LICENSE">MIT License</a>
+    </div>
+
+    <div class="logos">
+      <a href="https://ko-fi.com/cursedentertainment">
+        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support Cursed Entertainment on Ko-fi" width="180" loading="lazy">
+      </a>
+      <a href="https://cursed-entertainment.itch.io/">
+        <img src="https://github.com/CursedPrograms/cursedentertainment/raw/main/images/logos/logo-wide-grey.png" alt="Cursed Entertainment" width="250" loading="lazy">
+      </a>
+      <a href="https://github.com/SynthWomb">
+        <img src="https://github.com/SynthWomb/synth.womb/blob/main/logos/synthwomb07.png?raw=true" alt="SynthWomb" width="200" loading="lazy">
+      </a>
+    </div>
+
+    <div>&copy; Cursed Entertainment 2026</div>
+  </div>
+</footer>
+
+</body>
+</html>

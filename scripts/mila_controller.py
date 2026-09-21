@@ -298,7 +298,7 @@ def main():
         stat_tile(screen, f_sml, f_med, 20, sy + 216, colw, "SPEED %", t.get("speed", "--"))
         stat_tile(screen, f_sml, f_med, 30 + colw, sy + 216, colw, "GUARD", guard_txt)
 
-        hint = f_sml.render("1/2/3 mode  ·  arrows/WASD or QAED drive  ·  space stop  ·  esc quit", True, DIM)
+        hint = f_sml.render("1/2/3 mode - WASD/QAED drive - space stop - esc quit", True, DIM)
         screen.blit(hint, hint.get_rect(centerx=W // 2, y=H - 24))
 
         pygame.display.flip()

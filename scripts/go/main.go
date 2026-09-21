@@ -3,12 +3,12 @@
 //
 // USAGE
 //   mila_controller.exe
-//   mila_controller.exe -host 192.168.4.1 -port 5010
+//   mila_controller.exe --host 192.168.4.1 --port 5010
 //
 //   If MILA joined NORA's network (fleet mode) instead of hosting her own
 //   AP, she won't be at 192.168.4.1 anymore — check NORA's dashboard/fleet
 //   registry (http://192.168.4.1:5000/robots) for MILA's actual IP and pass
-//   it with -host.
+//   it with --host.
 //
 // BUILD (first time, fetch dependencies)
 //   go mod tidy
@@ -463,7 +463,7 @@ func (g *Game) Draw(dst *ebiten.Image) {
 	}
 	g.tile(dst, c2, sy+216, colw, "GUARD", guard)
 
-	drawText(dst, g.fSml, "1/2/3 mode  -  arrows/WASD or QAED drive  -  space stop  -  esc quit",
+	drawText(dst, g.fSml, "1/2/3 mode - WASD/QAED drive - space stop - esc quit",
 		W/2, H-18, dimC, true, true)
 }
 

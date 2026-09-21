@@ -1,6 +1,6 @@
 @echo off
 REM Builds and launches the C# MILA controller (needs the .NET SDK).
-REM Usage: run-csharp.bat [--host IP] [--port N]
+REM Usage: run-csharp.bat [--host IP|auto] [--port N]
 setlocal
 cd /d "%~dp0"
 

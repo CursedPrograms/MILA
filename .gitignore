@@ -51,5 +51,13 @@ m4/lt~obsolete.m4
 # (which is called by configure script))
 Makefile
 /venv
-/scripts/__pycache__
-/scripts/__pycache__
+__pycache__/
+
+# MILA build outputs
+/build/
+/scripts/build/
+/scripts/sim/*.exe
+/scripts/rust/target/
+/scripts/go/*.exe
+/scripts/**/bin/
+/scripts/**/obj/

@@ -35,7 +35,7 @@ int    lastSpeed   = 100;
 bool   lastGuard   = false;   // true while the manual-mode collision guard has force-stopped the robot
 
 // === CONNECTION WATCHDOG ===
-// Both clients (web dashboard and mila_controller.py) poll /status every
+// All clients (web dashboard and the desktop controllers) poll /status every
 // 400ms for as long as they're running, whereas drive commands are only
 // sent once per button press/release — so a gap in /status polling, not a
 // gap in /cmd, is what actually tells us the client died or WiFi dropped.

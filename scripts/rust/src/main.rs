@@ -373,7 +373,7 @@ impl App {
         painter.text(
             at(W / 2.0, H - 18.0),
             Align2::CENTER_CENTER,
-            "1/2/3 mode  -  arrows/WASD or QAED drive  -  space stop  -  esc quit",
+            "1/2/3 mode - WASD/QAED drive - space stop - esc quit",
             FontId::monospace(11.0),
             DIM,
         );

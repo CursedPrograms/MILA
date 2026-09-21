@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>MilaController</AssemblyName>
+    <RootNamespace>Mila</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- F# is order-sensitive: each file can only see the ones above it. -->
+  <ItemGroup>
+    <Compile Include="Core.fs" />
+    <Compile Include="Net.fs" />
+    <Compile Include="Pad.fs" />
+    <Compile Include="App.fs" />
+  </ItemGroup>
+
+</Project>

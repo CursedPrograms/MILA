@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds and launches the C# MILA controller (needs the .NET SDK, Windows).
-# Usage: ./run-csharp.sh [--host IP] [--port N]
+# Usage: ./run-csharp.sh [--host IP|auto] [--port N]
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
