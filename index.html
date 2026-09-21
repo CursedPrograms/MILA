@@ -306,6 +306,21 @@
       <div class="card"><h4>Network discovery</h4><p>Scan your subnets for MILA and connect with a click. The last host, port and mode are remembered.</p></div>
     </div>
 
+    <h3 class="title" style="margin-top:40px;font-size:22px">Analyze a session with Fortran</h3>
+    <p class="muted">Press <strong>EXPORT CSV</strong> in a controller to save a run, then let <code>scripts/fortran/telemetry_stats.f90</code> summarise it: sample rate, time in each drive mode, per-sensor min / max / mean / standard deviation, outliers, connection gaps and close calls. Needs <code>gfortran</code>; it picks your newest export automatically.</p>
+<pre><span class="p">$</span> scripts/run-fortran.sh            <span class="c"># or run-fortran.bat / run-fortran.ps1</span>
+
+Samples:   200
+Duration:  0:01:47  (107.0 s)
+Modes:     wasd 120 (60.0%)  tank 80 (40.0%)
+
+        Sensor      n  missing       min       max      mean    stddev   outliers
+Front dist cm     200        0      8.50    400.00     62.36     37.83          1
+Left dist cm      180       20     40.00    100.00     70.61     21.06          0
+
+Close calls (front &lt; 20 cm): 8 samples (4.0%)
+Connection: 1 gap(s) longer than 2.0 s (longest 8.0 s)</pre>
+
     <h3 class="title" style="margin-top:40px;font-size:22px">Test without a robot</h3>
     <p class="muted">A mock MILA lives in <code>scripts/sim</code>. It serves the same endpoints as the firmware with simulated sensor data:</p>
 <pre><span class="p">$</span> scripts/run-sim.sh

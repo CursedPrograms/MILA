@@ -96,6 +96,15 @@ Every controller lives in [`scripts/`](scripts) and has a build-and-run script i
 
 **The C++, C# and F# controllers** also have a proximity radar, live distance / temperature / humidity graphs with CSV export, an exact speed slider, network discovery (`--host auto`), remembered host / port / mode, and Xbox gamepad support (stick or D-pad to drive, triggers for speed, `A` to stop, bumpers to change mode).
 
+## Analyzing a session (Fortran)
+
+The **EXPORT CSV** button saves the whole session to `Documents\MILA-telemetry`. `scripts/fortran/telemetry_stats.f90` turns an export into a report: sample rate, time in each drive mode, per-sensor min / max / mean / standard deviation, outliers (beyond 3σ), connection gaps and close calls (front distance under 20 cm). It needs `gfortran` and picks the newest export by default:
+
+```
+scripts/run-fortran.sh              # or run-fortran.bat / run-fortran.ps1
+scripts/run-fortran.sh my_run.csv
+```
+
 ## Testing without a robot
 
 `scripts/sim` holds a mock MILA that serves the same endpoints as the firmware with simulated sensor data:
