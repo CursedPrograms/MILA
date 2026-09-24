@@ -25,6 +25,7 @@
 
 # MILA
 ## MINIATURE INTEGRATED LOGIC AUTOMATON
+### A DREAM Robotics Agent
 
 - Robot Type: Tank
 
@@ -32,6 +33,19 @@
 
 ### Software
 - [Arduino IDE](https://docs.arduino.cc/software/ide/)
+
+---
+
+## Related Projects (DREAM Robotics Ecosystem)
+
+- [WHIP-Robot-v00](https://github.com/CursedPrograms/WHIP-Robot-v00)
+- [KIDA-Robot-v00](https://github.com/CursedPrograms/KIDA-Robot-v00)
+- [KIDA-Robot-v01](https://github.com/CursedPrograms/KIDA-Robot-v01)
+- [NORA-Robot-v00](https://github.com/CursedPrograms/NORA-Robot-v00)
+- [MILA-Robot-v01](https://github.com/CursedPrograms/MILA)
+- [ARM-Robot-v01](https://github.com/CursedPrograms/ARM-Robot-v01)
+- [RIFT](https://github.com/CursedPrograms/RIFT)
+- [DREAM](https://github.com/CursedPrograms/DREAM)
 
 ---
 
